@@ -1,48 +1,42 @@
-import express from "express";
-import puppeteer from "puppeteer";
-const app = express();
-const port = 8083;
-import cors from "cors";
-app.use(express.json());
-app.use(cors());
-app.get("/", (req, res) => {
-  res.send("Hello World!");
-});
+const app = require("express")();
 
-app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`);
-});
+let chrome = {};
+let puppeteer;
 
-app.get("/ip-data", async (req, res) => {
-  let browser;
-  try {
-    browser = await puppeteer.launch({
+if (process.env.AWS_LAMBDA_FUNCTION_VERSION) {
+  chrome = require("chrome-aws-lambda");
+  puppeteer = require("puppeteer-core");
+} else {
+  puppeteer = require("puppeteer");
+}
+
+app.get("/api", async (req, res) => {
+  let options = {};
+
+  if (process.env.AWS_LAMBDA_FUNCTION_VERSION) {
+    options = {
+      args: [...chrome.args, "--hide-scrollbars", "--disable-web-security"],
+      defaultViewport: chrome.defaultViewport,
+      executablePath: await chrome.executablePath,
       headless: true,
-      defaultViewport: false,
-      userDataDir: "./tmp",
-    });
-    const page = await browser.newPage();
-    await page.goto("https://api.myip.com/");
-    const jsonData = await page.evaluate(() => {
-      const bodyContent = document.querySelector("body").innerText;
-      try {
-        return JSON.parse(bodyContent);
-      } catch (error) {
-        console.error("Error parsing JSON data:", error);
-        return null;
-      }
-    });
-    const result = {
-      ip_address: jsonData.ip,
-      country_name: jsonData.country,
-      country_code: jsonData.cc,
+      ignoreHTTPSErrors: true,
     };
-    res.send(result);
-  } catch (error) {
-    console.log(error);
-  } finally {
-    if (browser) {
-      await browser.close();
-    }
+  }
+
+  try {
+    let browser = await puppeteer.launch(options);
+
+    let page = await browser.newPage();
+    await page.goto("https://www.google.com");
+    res.send(await page.title());
+  } catch (err) {
+    console.error(err);
+    return null;
   }
 });
+
+app.listen(process.env.PORT || 3000, () => {
+  console.log("Server started");
+});
+
+module.exports = app;
